@@ -110,6 +110,8 @@ class AnimatedMapController {
     Offset offset = Offset.zero,
     double? rotation,
     Curve? curve,
+    Curve? moveCurve,
+    Curve? zoomProgressCurve,
     String? customId,
     Duration? duration,
     bool? cancelPreviousAnimations,
@@ -171,7 +173,9 @@ class AnimatedMapController {
 
     final animation = CurvedAnimation(
       parent: animationController,
-      curve: curve ?? this.curve,
+      curve: (moveCurve != null || zoomProgressCurve != null)
+          ? _DualCurve(moveCurve ?? this.curve, zoomProgressCurve ?? this.curve)
+          : (curve ?? this.curve),
     )..onEnd(() {
         animationController.dispose();
         _runningAnimations.remove(animationController);
@@ -237,9 +241,19 @@ class AnimatedMapController {
         rotateTween,
         animationId,
       ) {
+        final double t = animation.value;
+        // Default curves maintain backward compatibility
+        final Curve moveC = (animation.curve is _DualCurve)
+            ? (animation.curve as _DualCurve).moveCurve
+            : Curves.fastOutSlowIn;
+        final Curve zoomC = (animation.curve is _DualCurve)
+            ? (animation.curve as _DualCurve).zoomCurve
+            : Curves.fastOutSlowIn;
+        final double tMove = moveC.transform(t);
+        final double tZoom = zoomC.transform(t);
         final result = mapController.moveAndRotate(
-          latLngTween.evaluate(animation),
-          zoomTween.evaluate(animation),
+          latLngTween.transform(tMove),
+          zoomTween.transform(tZoom),
           rotateTween.evaluate(animation),
           id: animationId.id,
         );
@@ -253,13 +267,23 @@ class AnimatedMapController {
         offsetTween,
         rotateTween,
         animationId,
-      ) =>
-          mapController.move(
-            latLngTween.evaluate(animation),
-            zoomTween.evaluate(animation),
-            offset: offsetTween.evaluate(animation),
-            id: animationId.id,
-          );
+      ) {
+        final double t = animation.value;
+        final Curve moveC = (animation.curve is _DualCurve)
+            ? (animation.curve as _DualCurve).moveCurve
+            : Curves.fastOutSlowIn;
+        final Curve zoomC = (animation.curve is _DualCurve)
+            ? (animation.curve as _DualCurve).zoomCurve
+            : Curves.fastOutSlowIn;
+        final double tMove = moveC.transform(t);
+        final double tZoom = zoomC.transform(t);
+        return mapController.move(
+          latLngTween.transform(tMove),
+          zoomTween.transform(tZoom),
+          offset: offsetTween.evaluate(animation),
+          id: animationId.id,
+        );
+      };
     } else if (hasRotation) {
       return (
         animation,
@@ -497,6 +521,15 @@ class AnimatedMapController {
     }
     _runningAnimations.clear();
   }
+}
+
+/// Internal curve wrapper to allow separate movement vs zoom curves.
+class _DualCurve extends Curve {
+  const _DualCurve(this.moveCurve, this.zoomCurve);
+  final Curve moveCurve;
+  final Curve zoomCurve;
+  @override
+  double transform(double t) => moveCurve.transform(t);
 }
 
 class _AngleTween extends Tween<double> {
