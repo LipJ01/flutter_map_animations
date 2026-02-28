@@ -1,0 +1,6 @@
+# melos_managed_dependency_overrides: flutter_map,flutter_map_animations
+dependency_overrides:
+  flutter_map:
+    path: ../../flutter_map
+  flutter_map_animations:
+    path: ..
